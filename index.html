@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>RKW ASN Agent</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root {
+  --bg: #0e0f11;
+  --surface: #16181c;
+  --surface2: #1e2026;
+  --border: #2a2d35;
+  --accent: #00d4aa;
+  --accent2: #0099ff;
+  --warn: #ffaa00;
+  --text: #e8eaf0;
+  --muted: #6b7280;
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:14px;min-height:100vh;line-height:1.6}
+
+/* header */
+.header{padding:28px 32px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+.header-badge{background:var(--accent);color:#000;font-family:var(--mono);font-size:10px;font-weight:500;padding:4px 10px;letter-spacing:.08em}
+.header h1{font-size:15px;font-weight:400;color:var(--text);letter-spacing:.02em}
+.header-sub{margin-left:auto;font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* upload zone */
+.upload-zone{margin:32px;border:1px dashed var(--border);background:var(--surface);padding:48px 32px;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;position:relative}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:var(--surface2)}
+.upload-zone input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.upload-icon{width:40px;height:40px;margin:0 auto 16px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center}
+.upload-icon svg{width:18px;height:18px;stroke:var(--accent);fill:none;stroke-width:1.5}
+.upload-title{font-size:13px;font-weight:500;margin-bottom:6px}
+.upload-hint{font-family:var(--mono);font-size:11px;color:var(--muted)}
+
+/* status bar */
+.status{margin:0 32px;background:var(--surface);border:1px solid var(--border);padding:10px 16px;font-family:var(--mono);font-size:12px;color:var(--muted);display:none;align-items:center;gap:10px}
+.status.show{display:flex}
+.status-dot{width:7px;height:7px;background:var(--accent);flex-shrink:0;animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.status.done .status-dot{animation:none;background:var(--accent)}
+.status.err .status-dot{animation:none;background:#ff4444}
+
+/* output */
+.output{margin:24px 32px 32px;display:none}
+.output.show{display:block}
+
+/* summary header */
+.asn-header{background:var(--surface);border:1px solid var(--border);padding:20px 24px;margin-bottom:16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px}
+.asn-field{display:flex;flex-direction:column;gap:4px}
+.asn-label{font-family:var(--mono);font-size:10px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.asn-value{font-size:13px;font-weight:500;color:var(--text)}
+.asn-value.accent{color:var(--accent)}
+.asn-value.warn{color:var(--warn)}
+
+/* vessel banner */
+.vessel-banner{background:var(--surface2);border:1px solid var(--accent);border-left:3px solid var(--accent);padding:14px 20px;margin-bottom:16px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+.vessel-name{font-family:var(--mono);font-size:14px;font-weight:500;color:var(--accent);letter-spacing:.06em}
+.vessel-detail{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.vessel-detail span{color:var(--text)}
+
+/* section title */
+.section-title{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;align-items:center;gap:8px}
+.section-title::after{content:'';flex:1;height:1px;background:var(--border)}
+
+/* table */
+.table-wrap{overflow-x:auto;margin-bottom:24px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead tr{background:var(--surface2)}
+thead th{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr:hover{background:var(--surface)}
+tbody td{padding:9px 12px;color:var(--text);font-family:var(--mono);white-space:nowrap}
+tbody td.item{font-weight:500;color:var(--accent2)}
+tbody td.po{color:var(--accent)}
+.match{color:#4caf81}
+.mismatch{color:#ff6b6b;font-weight:500}
+
+/* container blocks */
+.container-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-bottom:24px}
+.container-card{background:var(--surface);border:1px solid var(--border);padding:16px}
+.container-card .ctag{font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:8px;letter-spacing:.06em}
+.container-card .cnum{font-family:var(--mono);font-size:13px;font-weight:500;color:var(--warn);margin-bottom:10px}
+.container-rows{display:grid;gap:4px}
+.container-row{display:flex;justify-content:space-between;font-size:11px}
+.container-row .ck{color:var(--muted);font-family:var(--mono)}
+.container-row .cv{color:var(--text)}
+
+/* actions */
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px}
+.btn{font-family:var(--mono);font-size:12px;padding:9px 20px;cursor:pointer;border:1px solid;letter-spacing:.04em;transition:all .15s;display:flex;align-items:center;gap:8px}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:#000}
+.btn-primary:hover{background:#00f0c0}
+.btn-secondary{background:transparent;border-color:var(--border);color:var(--text)}
+.btn-secondary:hover{border-color:var(--accent);color:var(--accent)}
+.btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.5}
+
+/* discrepancy flag */
+.flag{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;background:#ff4444;color:#fff;margin-left:6px}
+.ok{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 7px;background:#1a3a2a;color:#4caf81}
+
+/* totals row */
+tfoot tr{background:var(--surface2)}
+tfoot td{padding:10px 12px;font-family:var(--mono);font-size:12px;font-weight:500;border-top:1px solid var(--border)}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-badge">ASN AGENT</div>
+  <h1>ESP Advanced Shipping Notice Parser</h1>
+  <div class="header-sub">RKW · K&amp;N Integration</div>
+</div>
+
+<div class="upload-zone" id="dropZone">
+  <input type="file" id="fileInput" accept=".xml,.json"/>
+  <div class="upload-icon">
+    <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+  </div>
+  <div class="upload-title">Upload ASN file from ESP / K&amp;N</div>
+  <div class="upload-hint">XML or JSON · Drag and drop or click to browse</div>
+</div>
+
+<div class="status" id="status">
+  <div class="status-dot"></div>
+  <span id="statusText">Reading file...</span>
+</div>
+
+<div class="output" id="output"></div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const statusEl = document.getElementById('status');
+const statusText = document.getElementById('statusText');
+const outputEl = document.getElementById('output');
+
+fileInput.addEventListener('change', e => { if(e.target.files[0]) processFile(e.target.files[0]); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+
+function showStatus(msg, state='loading') {
+  statusEl.className = 'status show ' + state;
+  statusText.textContent = msg;
+}
+
+function processFile(file) {
+  showStatus('Reading ' + file.name + '...');
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      let data;
+      if(file.name.endsWith('.xml')) {
+        data = parseXML(e.target.result);
+      } else {
+        data = parseJSON(e.target.result);
+      }
+      showStatus('Parsed ' + data.lines.length + ' PO lines from ' + file.name, 'done');
+      render(data);
+    } catch(err) {
+      showStatus('Error: ' + err.message, 'err');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseXML(xmlStr) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlStr, 'application/xml');
+
+  const hdr = doc.querySelector('ASNHeaderIdentifier');
+  const header = {
+    sender: getText(hdr, 'SenderIdentification'),
+    receiver: getText(hdr, 'ReceiverIdentification'),
+    transDate: getText(hdr, 'TransDate'),
+    transTime: getText(hdr, 'TransTime'),
+    envelopeId: getText(hdr, 'EnvelopeIdentification'),
+  };
+
+  const lines = [];
+  doc.querySelectorAll('ASNPurchaseOrderEvent').forEach(ev => {
+    const id = ev.querySelector('EventIdentifer');
+    const ldo = ev.querySelector('LineDeliveryOrder');
+    const trans = ev.querySelector('Transportation');
+    const vessel = ev.querySelector('VesselInformation');
+    const vol = ev.querySelector('VolumeInformation');
+    const cont = ev.querySelector('ContainerInformation');
+    const clear = ev.querySelector('ClearanceInformation');
+
+    lines.push({
+      eventCode: getText(id,'EventCode'),
+      poNumber: getText(id,'PONumber'),
+      lineNumber: getText(id,'LineNumber'),
+      itemNumber: getText(id,'ItemNumber'),
+      statusDate: getText(ldo,'StatusEntryDate'),
+      statusTime: getText(ldo,'StatusEntryTime'),
+      orderQty: getText(ldo,'OrderQty'),
+      advisedQty: getText(ldo,'AdvisedQuantity'),
+      transport: getText(trans,'ModeOfTransport'),
+      portDep: getText(trans,'PortOfDeparture'),
+      portArr: getText(trans,'PortOfArrival'),
+      typeLoading: getText(trans,'TypeOfLoading'),
+      carrier: getText(trans,'Carrier'),
+      ets: getText(vessel,'ETS'),
+      eta: getText(vessel,'ETA'),
+      vesselName: getText(vessel,'VesselName'),
+      voyageNo: getText(vessel,'VoyageNo'),
+      ats: getText(vessel,'ATS'),
+      ata: getText(vessel,'ATA'),
+      volumeCBM: getText(vol,'VolumeCBM'),
+      numCartons: getText(vol,'NumberOfCartons'),
+      weightByLine: getText(cont,'WeightByLine'),
+      volumeByLine: getText(cont,'VolumeByLine'),
+      containerWeight: getText(cont,'ContainerWeight'),
+      containerVolume: getText(cont,'ContainerVolume'),
+      billOfLading: getText(cont,'OceanBillOfLading'),
+      containerNumber: getText(cont,'ContainerNumber'),
+      containerSize: getText(cont,'ContainerSize'),
+      sealNumber: getText(cont,'SealNumber'),
+      trackingNo: getText(cont,'TrackingNo'),
+      clearanceDate: getText(clear,'ClearanceDate'),
+      entryNumber: getText(clear,'EntryNumber'),
+    });
+  });
+
+  return { header, lines };
+}
+
+function parseJSON(jsonStr) {
+  const raw = JSON.parse(jsonStr);
+  const lines = Array.isArray(raw) ? raw : [raw];
+  return { header: { sender:'JSON', receiver:'RKW', transDate: new Date().toISOString().slice(0,10), transTime:'', envelopeId:'-' }, lines };
+}
+
+function getText(parent, tag) {
+  if(!parent) return '';
+  const el = parent.querySelector(tag);
+  return el ? (el.textContent || '') : '';
+}
+
+function fmtDate(d) {
+  if(!d) return '—';
+  const [y,m,day] = d.split('-');
+  if(!y||!m||!day) return d;
+  return day+'/'+m+'/'+y;
+}
+
+function portName(code) {
+  const ports = { CNTAO:'Qingdao, China', GBFXT:'Felixstowe, UK', CNSHA:'Shanghai, China', CNNGB:'Ningbo, China' };
+  return ports[code] ? code+' · '+ports[code] : code;
+}
+
+function render(data) {
+  const { header, lines } = data;
+
+  const poNumbers = [...new Set(lines.map(l=>l.poNumber))];
+  const vessels = [...new Set(lines.map(l=>l.vesselName).filter(Boolean))];
+  const containers = [...new Set(lines.map(l=>l.containerNumber).filter(Boolean))];
+  const totalOrdered = lines.reduce((s,l)=>s+Number(l.orderQty||0),0);
+  const totalAdvised = lines.reduce((s,l)=>s+Number(l.advisedQty||0),0);
+  const totalCartons = lines.reduce((s,l)=>s+Number(l.numCartons||0),0);
+  const allMatch = totalOrdered === totalAdvised;
+
+  // Group containers
+  const contMap = {};
+  lines.forEach(l => {
+    if(!l.containerNumber) return;
+    if(!contMap[l.containerNumber]) contMap[l.containerNumber] = { lines:[], size:l.containerSize, seal:l.sealNumber, weight:l.containerWeight, vol:l.containerVolume, tracking:l.trackingNo };
+    contMap[l.containerNumber].lines.push(l);
+  });
+
+  const ets = lines[0]?.ets || '';
+  const eta = lines[0]?.eta || '';
+  const voyageNo = lines[0]?.voyageNo || '';
+  const carrier = lines[0]?.carrier || '';
+
+  let html = `
+  <div class="vessel-banner">
+    <div>
+      <div class="vessel-detail">Vessel</div>
+      <div class="vessel-name">${vessels.join(', ') || '—'}</div>
+    </div>
+    <div class="vessel-detail">Voyage&nbsp;<span>${voyageNo}</span></div>
+    <div class="vessel-detail">Carrier&nbsp;<span>${carrier}</span></div>
+    <div class="vessel-detail">ETS&nbsp;<span>${fmtDate(ets)}</span></div>
+    <div class="vessel-detail">ETA&nbsp;<span style="color:var(--accent)">${fmtDate(eta)}</span></div>
+    <div class="vessel-detail">Route&nbsp;<span>${portName(lines[0]?.portDep)} → ${portName(lines[0]?.portArr)}</span></div>
+  </div>
+
+  <div class="asn-header">
+    <div class="asn-field"><span class="asn-label">Envelope ID</span><span class="asn-value accent">${header.envelopeId}</span></div>
+    <div class="asn-field"><span class="asn-label">Received from</span><span class="asn-value">${header.sender}</span></div>
+    <div class="asn-field"><span class="asn-label">Trans date</span><span class="asn-value">${fmtDate(header.transDate)} ${header.transTime}</span></div>
+    <div class="asn-field"><span class="asn-label">PO count</span><span class="asn-value accent">${poNumbers.length}</span></div>
+    <div class="asn-field"><span class="asn-label">Total lines</span><span class="asn-value">${lines.length}</span></div>
+    <div class="asn-field"><span class="asn-label">Total qty</span><span class="asn-value ${allMatch?'accent':'warn'}">${totalOrdered.toLocaleString()} ${allMatch?'✓':'⚠ mismatch'}</span></div>
+    <div class="asn-field"><span class="asn-label">Total cartons</span><span class="asn-value">${totalCartons.toLocaleString()}</span></div>
+    <div class="asn-field"><span class="asn-label">Containers</span><span class="asn-value">${containers.length}</span></div>
+  </div>
+
+  <div class="actions">
+    <button class="btn btn-primary" onclick="downloadExcel()">
+      <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+      Download Excel
+    </button>
+    <button class="btn btn-secondary" onclick="downloadReport()">
+      <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Download Report (.txt)
+    </button>
+  </div>
+
+  <div class="section-title">Purchase order lines</div>
+  <div class="table-wrap">
+  <table>
+    <thead><tr>
+      <th>PO Number</th><th>Line</th><th>Item</th>
+      <th>Ordered</th><th>Advised</th><th>Match</th>
+      <th>Cartons</th><th>Wt (kg)</th><th>Vol (m³)</th>
+      <th>Container</th><th>Size</th>
+    </tr></thead>
+    <tbody>
+  `;
+
+  lines.forEach(l => {
+    const match = l.orderQty === l.advisedQty;
+    html += `<tr>
+      <td class="po">${l.poNumber}</td>
+      <td>${l.lineNumber}</td>
+      <td class="item">${l.itemNumber}</td>
+      <td>${Number(l.orderQty).toLocaleString()}</td>
+      <td>${Number(l.advisedQty).toLocaleString()}</td>
+      <td>${match ? '<span class="ok">MATCH</span>' : '<span class="flag">DIFF</span>'}</td>
+      <td>${Number(l.numCartons).toLocaleString()}</td>
+      <td>${Number(l.weightByLine).toLocaleString()}</td>
+      <td>${l.volumeByLine}</td>
+      <td style="color:var(--warn);font-family:var(--mono)">${l.containerNumber}</td>
+      <td>${l.containerSize}</td>
+    </tr>`;
+  });
+
+  html += `</tbody>
+    <tfoot><tr>
+      <td colspan="3">TOTALS</td>
+      <td>${totalOrdered.toLocaleString()}</td>
+      <td>${totalAdvised.toLocaleString()}</td>
+      <td>${allMatch?'<span class="ok">ALL OK</span>':'<span class="flag">CHECK</span>'}</td>
+      <td>${totalCartons.toLocaleString()}</td>
+      <td>${lines.reduce((s,l)=>s+Number(l.weightByLine||0),0).toLocaleString()}</td>
+      <td>${lines.reduce((s,l)=>s+Number(l.volumeByLine||0),0).toFixed(3)}</td>
+      <td colspan="2"></td>
+    </tr></tfoot>
+  </table></div>
+
+  <div class="section-title">Container summary</div>
+  <div class="container-grid">`;
+
+  Object.entries(contMap).forEach(([num, c]) => {
+    const pos = [...new Set(c.lines.map(l=>l.poNumber))];
+    html += `<div class="container-card">
+      <div class="ctag">Container</div>
+      <div class="cnum">${num}</div>
+      <div class="container-rows">
+        <div class="container-row"><span class="ck">Size</span><span class="cv">${c.size}</span></div>
+        <div class="container-row"><span class="ck">Seal</span><span class="cv">${c.seal}</span></div>
+        <div class="container-row"><span class="ck">Gross weight</span><span class="cv">${Number(c.weight).toLocaleString()} kg</span></div>
+        <div class="container-row"><span class="ck">Volume</span><span class="cv">${c.vol} m³</span></div>
+        <div class="container-row"><span class="ck">Tracking</span><span class="cv">${c.tracking}</span></div>
+        <div class="container-row"><span class="ck">POs inside</span><span class="cv">${pos.join(', ')}</span></div>
+        <div class="container-row"><span class="ck">Lines</span><span class="cv">${c.lines.length}</span></div>
+      </div>
+    </div>`;
+  });
+
+  html += `</div>`;
+  outputEl.innerHTML = html;
+  outputEl.className = 'output show';
+
+  // store for download
+  window._asnData = { header, lines, poNumbers, vessels, containers, ets, eta, voyageNo, carrier, totalOrdered, totalAdvised, totalCartons };
+}
+
+function downloadExcel() {
+  const d = window._asnData;
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: All lines
+  const rows = [['PO Number','Line','Item Number','Event Code','Status Date','Ordered Qty','Advised Qty','Match','Cartons','Weight (kg)','Volume (m³)','Transport','Port Departure','Port Arrival','Type Loading','Carrier','ETS','ETA','Vessel','Voyage No','Container Number','Container Size','Container Weight (kg)','Container Volume (m³)','Seal Number','Tracking No','Bill of Lading','Clearance Date','Entry Number']];
+  d.lines.forEach(l => rows.push([
+    l.poNumber, l.lineNumber, l.itemNumber, l.eventCode,
+    l.statusDate, Number(l.orderQty), Number(l.advisedQty),
+    l.orderQty===l.advisedQty?'MATCH':'MISMATCH',
+    Number(l.numCartons), Number(l.weightByLine), Number(l.volumeByLine),
+    l.transport, l.portDep, l.portArr, l.typeLoading, l.carrier,
+    l.ets, l.eta, l.vesselName, l.voyageNo,
+    l.containerNumber, l.containerSize, Number(l.containerWeight), Number(l.containerVolume),
+    l.sealNumber, l.trackingNo, l.billOfLading, l.clearanceDate, l.entryNumber
+  ]));
+  const ws1 = XLSX.utils.aoa_to_sheet(rows);
+  ws1['!cols'] = rows[0].map((_,i)=>({wch: i<3?14:i<6?10:12}));
+  XLSX.utils.book_append_sheet(wb, ws1, 'PO Lines');
+
+  // Sheet 2: Summary
+  const sum = [
+    ['RKW ASN Summary Report'],
+    [''],
+    ['Envelope ID', d.header.envelopeId],
+    ['Sender', d.header.sender],
+    ['Transaction Date', d.header.transDate],
+    [''],
+    ['Vessel', d.vessels.join(', ')],
+    ['Voyage No', d.voyageNo],
+    ['Carrier', d.carrier],
+    ['ETS (ship date)', d.ets],
+    ['ETA (arrival)', d.eta],
+    [''],
+    ['Purchase Orders', d.poNumbers.join(', ')],
+    ['Total PO Lines', d.lines.length],
+    ['Total Ordered Qty', d.totalOrdered],
+    ['Total Advised Qty', d.totalAdvised],
+    ['Qty Match', d.totalOrdered===d.totalAdvised?'YES - ALL MATCH':'NO - CHECK DISCREPANCIES'],
+    ['Total Cartons', d.totalCartons],
+    ['Containers', d.containers.join(', ')],
+  ];
+  const ws2 = XLSX.utils.aoa_to_sheet(sum);
+  ws2['!cols'] = [{wch:22},{wch:40}];
+  XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+  const fname = `ASN_${d.header.envelopeId}_${d.header.transDate}.xlsx`;
+  XLSX.writeFile(wb, fname);
+}
+
+function downloadReport() {
+  const d = window._asnData;
+  let txt = `RKW ASN REPORT
+${'='.repeat(60)}
+Envelope ID   : ${d.header.envelopeId}
+Sender        : ${d.header.sender} (K&N)
+Receiver      : ${d.header.receiver}
+Trans Date    : ${fmtDate(d.header.transDate)} ${d.header.transTime}
+
+VESSEL DETAILS
+${'─'.repeat(60)}
+Vessel        : ${d.vessels.join(', ')}
+Voyage        : ${d.voyageNo}
+Carrier       : ${d.carrier}
+ETS           : ${fmtDate(d.ets)}
+ETA           : ${fmtDate(d.eta)}
+
+SHIPMENT SUMMARY
+${'─'.repeat(60)}
+Purchase Orders  : ${d.poNumbers.join(', ')}
+Total PO Lines   : ${d.lines.length}
+Total Ordered    : ${d.totalOrdered.toLocaleString()}
+Total Advised    : ${d.totalAdvised.toLocaleString()}
+Qty Match        : ${d.totalOrdered===d.totalAdvised ? 'YES — ALL LINES MATCH' : 'NO — DISCREPANCY FOUND'}
+Total Cartons    : ${d.totalCartons.toLocaleString()}
+Containers       : ${d.containers.join(', ')}
+
+PO LINES DETAIL
+${'─'.repeat(60)}
+${'PO Number'.padEnd(12)}${'Line'.padEnd(6)}${'Item'.padEnd(18)}${'Ordered'.padEnd(10)}${'Advised'.padEnd(10)}${'Container'.padEnd(16)}${'Match'}
+${'─'.repeat(78)}
+`;
+  d.lines.forEach(l => {
+    const match = l.orderQty===l.advisedQty ? 'OK' : '** DIFF **';
+    txt += `${l.poNumber.padEnd(12)}${l.lineNumber.padEnd(6)}${l.itemNumber.padEnd(18)}${l.orderQty.padEnd(10)}${l.advisedQty.padEnd(10)}${l.containerNumber.padEnd(16)}${match}\n`;
+  });
+
+  txt += `\nGenerated: ${new Date().toLocaleString('en-GB')}\n`;
+
+  const blob = new Blob([txt], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ASN_Report_${d.header.envelopeId}.txt`;
+  a.click();
+}
+</script>
+</body>
+</html>

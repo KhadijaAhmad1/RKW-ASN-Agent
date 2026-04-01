@@ -1,0 +1,17 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Real ASN files — never commit actual shipment data
+ASN_2026*.xml
+ASN_2025*.xml
+*_real.xml
+*_live.xml
+
+# Output files
+*.xlsx
+*.docx
+
+# Editor
+.vscode/
+*.swp
